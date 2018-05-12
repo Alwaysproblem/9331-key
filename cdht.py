@@ -3,8 +3,7 @@ import socket
 
 def main():
     pass
-    pass
-    pass
+
 
 if __name__ == '__main__':
     main()
