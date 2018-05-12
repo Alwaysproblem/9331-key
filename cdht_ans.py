@@ -14,9 +14,9 @@ BASE_PORT = 50000
 # http://docstore.mik.ua/orelly/other/python/0596001886_pythonian-chp-19-sect-2.html
 class ThreadedUDPRequestHandler(socketserver.BaseRequestHandler):
    def handle(self):
-        data = self.request[0].strip()
+        data = self.request[0].decode('utf-8').strip()
         socket = self.request[1]
-        print("A ping request message was received from " + str(data).split()[-1] + ".")
+        print("A ping request message was received from " + data.split()[-1] + ".")
         socket.sendto("Received".encode('utf-8'), self.client_address)
 
 class ThreadedUDPServer(socketserver.ThreadingMixIn, socketserver.UDPServer):
