@@ -19,7 +19,6 @@ def parserArgument():
 class Peer:
     def __init__(self, peer, first, second, BASE_PORT, IP = '127.0.0.1'):
         self.base_port = BASE_PORT
-        self.peerID = peer
         self.name = 'peer ' + str(peer)
         self.ip = IP
         self.port = BASE_PORT + peer
@@ -30,21 +29,18 @@ class Peer:
         self.ss_name = 'peer ' + str(second)
         self.fs_alive = False
         self.ss_alive = False
-        self.peer_isAlive = {'first': False, 'second': False}  # the sign flag for receive function
-        self.fp = None                                         # first parent
-        self.sp = None                                         # second parent
+        self.peer_isAlive = False
 
     def peer_recv(self, sock, succesor):
         while True:
             received = sock.recv(1024).decode('utf-8')
-            # print(received)
+            self.peer_isAlive = True
             # print(f"the peer {self.fs_name if succesor == 'first' else self.ss_name} alive is {self.peer_isAlive} in the recv.")
-            if (received == (self.fs_name if succesor == 'first' else self.ss_name) + " received"):
-                self.peer_isAlive[succesor] = True
+            if (received == "Received"):
                 print("A ping response message was received from " + (self.fs_name if succesor == 'first' else self.ss_name))
             else:
                 print("the Wrong ping response received from " + (self.fs_name if succesor == 'first' else self.ss_name))
-            # time.sleep(0.1)
+            time.sleep(0.2)
 
     def test(self, succesor, recv_timeout):
         # configure the protocol into UDP
@@ -61,23 +57,22 @@ class Peer:
             print("Sending ping request to the " + self.ss_name)
         else:
             pass
-        self.peer_isAlive[succesor] = False
+        self.peer_isAlive = False
             
         t = td.Thread(target=self.peer_recv, args=[sock, succesor])
         t.setDaemon(True)
         t.start()
-        Timer_start = time.time()
+        Timer_start = time.clock()
 
         # print(f"the peer alive is {self.peer_isAlive} before the loop")
 
-        while not self.peer_isAlive[succesor] and time.time() - Timer_start < recv_timeout:
+        while not self.peer_isAlive and time.clock() - Timer_start < recv_timeout:
             pass
         
         # print(f"the peer alive is {self.peer_isAlive} after the loop")
-        print(f"the {(self.fs_name if succesor == 'first' else self.ss_name)} timeout is {time.time() - Timer_start}")
+        print(f"the timeout is {time.clock() - Timer_start}")
 
-
-        if self.peer_isAlive[succesor] == True:
+        if self.peer_isAlive == True:
             if succesor == 'first':
                 self.fs_alive = True
             elif succesor == 'second':
@@ -85,13 +80,12 @@ class Peer:
         else:
             if succesor == 'first':
                 self.fs_alive = 'timeout'
-                self.fs, self.fs_alive, self.fs_name = self.ss, self.ss_alive, self.ss_name
-                self.ss, self.ss_alive, self.ss_name = None, None, None
-                self.RequestSuccessor()
+                # self.fs, self.fs_alive, self.fs_name = self.ss, self.ss_alive, self.ss_name
+                # self.ss, self.ss_alive, self.ss_name = None, None, None
+                # self.RequestSuccessor()
             elif succesor == 'second':
                 self.ss_alive = 'timeout'
-                self.RequestSuccessor()
-
+                # self.RequestSuccessor()
 
 
     def RequestSuccessor(self):
@@ -106,65 +100,49 @@ class Peer:
 
         Message = 'exit'.encode('utf-8')
         # recvdata = "the peer {} is your second successor!"
-
-        sock_TCP.sendall(Message)
         SecID = int(recvdata.split()[2])
 
         self.ss, self.ss_alive, self.ss_name = (self.ip, SecID + self.base_port), True, f"peer {SecID}"
 
-        print(f"{self.ss}")
+        print(self.ss)
         print(self.ss_alive)
         print(self.ss_name)
 
-        sock_TCP.shutdown(1)
         sock_TCP.close()
 
-class UDP_Server:
-    def __init__(self, host, peerID, mode = 'UDP'):
-        self.ip = host[0]
-        self.port = host[1]
-        self.host = host
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.peerID = peerID
 
-    def handle(self):
-        self.sock.bind(self.host)
-        while True:
-            data, addr = self.sock.recvfrom(1024)
-            data = str(data, 'utf-8')
-            print("A ping request message was received from peer " + data.split()[-1] + ".")
-            # print(f"peer {self.port} received")
-            self.sock.sendto(f"peer {self.peerID} received".encode('utf-8'), addr)
+# Based on code from Python Docs here: 
+# https://docs.python.org/3.4/library/socketserver.html
+class ThreadedUDPRequestHandler(socketserver.BaseRequestHandler):
+   def handle(self):
+        data = self.request[0].decode('utf-8')
+        socket = self.request[1]
+        print("A ping request message was received from peer " + data.split()[-1] + ".")
+        socket.sendto("Received".encode('utf-8'), self.client_address)
 
+class ThreadedUDPServer(socketserver.ThreadingMixIn, socketserver.UDPServer):
+    pass
 
 class TCP_Server:
-    def __init__(self, host, peerID, mode = 'TCP'):
+    def __init__(self, host, mode = 'TCP'):
         self.ip = host[0]
         self.port = host[1]
         self.host = host
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.peerID = peerID
+
     
     def handle(self, peer):
         self.sock.bind(self.host)
         self.sock.listen(5)
         while True:
-            client_socket, client_addr = self.sock.accept()
-            while True:
-                data = str(client_socket.recv(1024), 'utf-8')
-                if data == 'exit':
-                    break
-                print(data)
-                if data == 'who is your first the succesor?':
-                    msg = f"the {peer.fs_name} is your second successor!"
-                    client_socket.sendall(bytes(msg, 'utf-8'))
-            client_socket.close()
-            time.sleep(0.5)
+            client_socket,client_addr = self.sock.accept()
+            client_socket.recv(1024)
 
 
 
 def pingService(peer, timeout, refresh_time):
     while True:
+        print("=====================start======================")
         check_1 = td.Thread(target = peer.test, args=['first', timeout])
         check_2 = td.Thread(target = peer.test, args=['second', timeout])
 
@@ -185,24 +163,13 @@ def main():
     BASE_PORT = 50000
     argv = parserArgument()
     p = Peer(argv.peer, argv._1st_sucsor, argv._2nd_sucsor, BASE_PORT)
-
-    UDPserver = UDP_Server(p.host, p.peerID)
-    UDPserve_forever = td.Thread(target = UDPserver.handle)
-    UDPserve_forever.setDaemon(True)
-    UDPserve_forever.start()
-
-    TCPserver = TCP_Server(p.host, p.peerID)
-    TCPserve_forever = td.Thread(target = TCPserver.handle, args=[p])
-    TCPserve_forever.setDaemon(True)
-    TCPserve_forever.start()
-
-
+    
     # setup the UDP Server for ping command
-    # UDPserver = ThreadedUDPServer(p.host, ThreadedUDPRequestHandler)
-    # UDPserver_thread = td.Thread(target=UDPserver.serve_forever)
-    # UDPserver_thread.daemon = True
-    # UDPserver_thread.start()
-    # print("UDPServer loop running in thread: ", UDPserver_thread.name)
+    UDPserver = ThreadedUDPServer(p.host, ThreadedUDPRequestHandler)
+    UDPserver_thread = td.Thread(target=UDPserver.serve_forever)
+    UDPserver_thread.daemon = True
+    UDPserver_thread.start()
+    print("UDPServer loop running in thread: ", UDPserver_thread.name)
 
     # setup the TCP Server for 
     # TCPserver = ThreadedUDPServer(p.host, ThreadedTCPRequestHandler)
@@ -213,10 +180,8 @@ def main():
 
     print(f"starting test the successor of the {p.name}")
 
-    time.sleep(0.5)
-
-    ping = td.Thread(target=pingService, args=[p, 2, 10])
-    # ping.setDaemon(True)
+    ping = td.Thread(target=pingService, args=[p, 2, 30])
+    ping.setDaemon(True)
     ping.start()
 
     # time.sleep(2)
@@ -239,9 +204,6 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        sys.exit(0)
-
+    main()
+    # threads = []
 
